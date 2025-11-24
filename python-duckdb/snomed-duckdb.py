@@ -1,13 +1,14 @@
-import duckdb
 import argparse
-import re
+import logging
 import os
+import re
 import sys
 import tempfile
 import zipfile
-import logging
 from enum import Enum
-from typing import List, Tuple, Callable
+from typing import Any, Callable, Match, Union
+
+import duckdb
 
 # Constants for DuckDB
 IN_MEMORY_KEYWORD = ":memory:"
@@ -57,7 +58,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-PACKAGE_LOCATION = args.package
+package_location = args.package
 DB_FILE = args.db
 SQL_RESOURCES_PATH = os.path.join(
     os.path.dirname(__file__),
@@ -71,11 +72,13 @@ class ReleaseType(Enum):
     SNAPSHOT = "Snapshot"
     DELTA = "Delta"
 
-    def __init__(self, full_name):
-        self.short_code = full_name[0].lower()
+    def __init__(self, full_name: str):
+        self.short_code: str = full_name[0].lower()
 
 
-def get_table_details(release_dir, release_type: ReleaseType):
+def get_table_details(
+    release_dir: str, release_type: ReleaseType
+) -> list[tuple[str, str, str]]:
     # define the regex filter to match release file naming convention per RF2 specification:
     # https://confluence.ihtsdotools.org/display/DOCRELFMT/3.3.2+Release+File+Naming+Convention
     #
@@ -99,9 +102,8 @@ def get_table_details(release_dir, release_type: ReleaseType):
     # align with table names used in the RVF:
     # https://github.com/IHTSDO/release-validation-framework/blob/master/src/main/resources/sql/create-tables-mysql.sql
 
-    extract_content_or_summary = (
-        filter_regex,  # only import files that match the naming convention above (e.g. exclude *.json)
-        lambda match: (
+    def extract_strategy(match: Match[str]) -> str:
+        return (
             match.group(2)
             + "_"
             + release_type.short_code  # i.e. Concept_f for terminology data files
@@ -109,7 +111,11 @@ def get_table_details(release_dir, release_type: ReleaseType):
             else match.group(3)
             + "refset_"
             + release_type.short_code  # Languagerefset_f for derivative work data files
-        ),
+        )
+
+    extract_content_or_summary = (
+        filter_regex,  # only import files that match the naming convention above (e.g. exclude *.json)
+        extract_strategy,
     )
 
     drop_suffix_from_refsetdescriptor = (
@@ -126,7 +132,7 @@ def get_table_details(release_dir, release_type: ReleaseType):
     )
     add_underscore_to_stated_relationship = (r"(Stated)(Relationship)", r"\1_\2")
 
-    regex_transformations: List[Tuple[str, str | Callable]] = [
+    regex_transformations: list[tuple[str, Union[str, Callable[[Match[str]], str]]]] = [
         extract_content_or_summary,
         drop_suffix_from_refsetdescriptor,
         drop_suffix_from_simplerefset,
@@ -136,7 +142,7 @@ def get_table_details(release_dir, release_type: ReleaseType):
         add_underscore_to_stated_relationship,
     ]
 
-    normalized_table_names = []
+    normalized_table_names: list[tuple[str, str, str]] = []
     for dirname, _, files in os.walk(os.path.join(release_dir, release_type.value)):
         for filename in files:
             if re.match(filter_regex, filename):
@@ -150,17 +156,18 @@ def get_table_details(release_dir, release_type: ReleaseType):
                 )
 
     # sort filenames to ensure that terminology data and concept files are loaded first
-    normalized_table_names.sort(
-        key=lambda x: (
+    def sort_key(x: tuple[str, str, str]) -> tuple[bool, bool, str]:
+        return (
             "sct2" not in x[1],  # Prioritize terminology data files
             "concept" not in x[0],  # Prioritize concept files
             x[0],  # Finally, sort alphabetically by normalized name
         )
-    )
+
+    normalized_table_names.sort(key=sort_key)
     return normalized_table_names
 
 
-def validate_package_path(package_path):
+def validate_package_path(package_path: str) -> None:
     if not (
         package_path or os.path.isdir(package_path) or os.path.isfile(package_path)
     ):
@@ -168,8 +175,8 @@ def validate_package_path(package_path):
 
 
 class DuckDBClient:
-    def __init__(self, db_path=IN_MEMORY_KEYWORD):
-        self.conn = duckdb.connect(db_path)
+    def __init__(self, db_path: str = IN_MEMORY_KEYWORD):
+        self.conn = duckdb.connect(db_path)  # type: ignore
         try:
             self.conn.execute(UI_INSTALL_COMMAND)
             self.conn.execute(UI_LOAD_COMMAND)
@@ -177,7 +184,7 @@ class DuckDBClient:
         except Exception as e:
             logging.error(ERROR_UI_INIT_FAILED.format(e))
 
-    def execute_sql_file(self, dirname, sql_filename):
+    def execute_sql_file(self, dirname: str, sql_filename: str) -> list[Any] | None:
         sql_filepath = os.path.join(dirname, sql_filename)
         try:
             with open(sql_filepath, "r") as file:
@@ -197,7 +204,9 @@ class DuckDBClient:
         except Exception as e:
             logging.error(ERROR_UI_START_FAILED.format(e))
 
-    def import_text_file(self, table_name, dirname, rf2_filename):
+    def import_text_file(
+        self, table_name: str, dirname: str, rf2_filename: str
+    ) -> None:
         rf2_filepath = os.path.join(dirname, rf2_filename)
         try:
             self.conn.execute(
@@ -219,12 +228,12 @@ class DuckDBClient:
         logging.debug(DEBUG_CONNECTION_CLOSED)
 
 
-def validate_targetcomponentid(client: DuckDBClient, release_type: ReleaseType):
+def validate_targetcomponentid(client: DuckDBClient, release_type: ReleaseType) -> None:
     sql_filename = f"validate_{release_type.value.lower()}_targetcomponentid.sql"
 
     result = client.execute_sql_file(SQL_RESOURCES_PATH, sql_filename)
 
-    if len(result):
+    if result and len(result):
         logging.error(
             f"Found {len(result)} invalid targetComponentIds in the Association Refset {release_type} file"
         )
@@ -233,27 +242,27 @@ def validate_targetcomponentid(client: DuckDBClient, release_type: ReleaseType):
 
 if __name__ == "__main__":
     try:
-        validate_package_path(PACKAGE_LOCATION)
+        validate_package_path(package_location)
     except ValueError as e:
         logging.error(e)
         parser.print_help(sys.stderr)
         quit()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        if PACKAGE_LOCATION.endswith(".zip"):
-            if not os.path.isfile(PACKAGE_LOCATION):
+        if package_location.endswith(".zip"):
+            if not os.path.isfile(package_location):
                 logging.error(ERROR_ZIP_NOT_FOUND)
                 quit()
-            logging.info(INFO_EXTRACTING_PACKAGE.format(PACKAGE_LOCATION))
-            with zipfile.ZipFile(PACKAGE_LOCATION, "r") as zip_ref:
+            logging.info(INFO_EXTRACTING_PACKAGE.format(package_location))
+            with zipfile.ZipFile(package_location, "r") as zip_ref:
                 zip_ref.extractall(temp_dir)
-            PACKAGE_LOCATION = os.path.join(temp_dir, os.listdir(temp_dir)[0])
+            package_location = os.path.join(temp_dir, os.listdir(temp_dir)[0])
 
         duckdb_client = DuckDBClient(DB_FILE)
         file_imported = False
         try:
             for release_type in [ReleaseType.FULL, ReleaseType.SNAPSHOT]:
-                table_details = get_table_details(PACKAGE_LOCATION, release_type)
+                table_details = get_table_details(package_location, release_type)
                 if not table_details:
                     logging.warning(WARNING_NO_MATCHING_FILES.format(release_type.name))
                 else:
