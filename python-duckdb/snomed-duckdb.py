@@ -26,6 +26,7 @@ ERROR_INVALID_PACKAGE = "Invalid package directory"
 ERROR_SQL_EXEC_FAILED = "SQL execution failed: {}, {}"
 ERROR_UI_INIT_FAILED = "UI initialization failed: {}"
 ERROR_UI_START_FAILED = "UI start failed: {}"
+ERROR_UNRECOGNISED_FORMAT = "Unrecognised file type: {}"
 ERROR_ZIP_NOT_FOUND = "Zip file not found"
 INFO_EXTRACTING_PACKAGE = "Extracting package '{}'"
 INFO_IMPORT_SUCCESS = "Imported '{}'"
@@ -89,7 +90,7 @@ def get_table_details(release_dir, release_type: ReleaseType):
     language_code = r"(-[a-z-]{2,8})?"
     content_sub_type = rf"{refset_id}{summary}{rt}{language_code}"
 
-    country_namespace = r"(?:INT|[A-Z]{2}\d{7})"
+    country_namespace = r"(?:(INT|[A-Z]{2})\d{7})"
     version_date = r"\d{8}"
     file_ext = r"txt"
 
@@ -204,7 +205,11 @@ class DuckDBClient:
             )
             logging.info(INFO_IMPORT_SUCCESS.format(rf2_filename))
         except Exception as e:
-            logging.error(ERROR_IMPORT_FAILURE.format(rf2_filename, e))
+            match type(e):
+                case duckdb.CatalogException:
+                    logging.error(ERROR_UNRECOGNISED_FORMAT.format(rf2_filename, e))
+                case _:
+                    logging.error(ERROR_IMPORT_FAILURE.format(rf2_filename, e))
             logging.debug(
                 DEBUG_FAILED_SQL.format(table_name, rf2_filepath, COPY_OPTIONS)
             )
