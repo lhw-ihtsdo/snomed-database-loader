@@ -447,8 +447,8 @@ create table extendedassociationrefset_s(
     foreign key (targetManufacturedForm) references concept_s (id),
 );
 -- NL-specific
-drop table if exists correlatedmaptypereferencesetrefset_s;
-create table correlatedmaptypereferencesetrefset_s(
+drop table if exists correlatedmaptyperefset_s;
+create table correlatedmaptyperefset_s(
     id varchar(36) not null primary key,
     effectivetime date not null,
     active tinyint not null,
@@ -460,11 +460,11 @@ create table correlatedmaptypereferencesetrefset_s(
     foreign key (moduleid) references concept_s (id),
     foreign key (refsetid) references concept_s (id),
     foreign key (referencedcomponentid) references concept_s (id),
-    foreign key (correlationId) references concept_s (id),
+    foreign key (correlationId) references concept_s (id)
 );
 -- NL-specific
-drop table if exists correlatedextendedmaptypereferencesetrefset_s;
-create table correlatedextendedmaptypereferencesetrefset_s(
+drop table if exists correlatedextendedmaptyperefset_s;
+create table correlatedextendedmaptyperefset_s(
     id varchar(36) not null primary key,
     effectivetime date not null,
     active tinyint not null,
@@ -480,5 +480,5 @@ create table correlatedextendedmaptypereferencesetrefset_s(
     foreign key (
         snomedCtSourceCodeToTargetMapCodeCorrelationValue
     ) references concept_s (id),
-    foreign key (mapTargetQualifier) references concept_s (id),
+    foreign key (mapTargetQualifier) references concept_s (id)
 );

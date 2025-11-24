@@ -366,8 +366,8 @@ create table extendedassociationrefset_d(
     primary key (id, effectivetime),
 );
 -- NL-specific
-drop table if exists correlatedmaptypereferencesetrefset_d;
-create table correlatedmaptypereferencesetrefset_d(
+drop table if exists correlatedmaptyperefset_d;
+create table correlatedmaptyperefset_d(
     id varchar(36) not null,
     effectivetime date not null,
     active tinyint not null,
@@ -379,8 +379,8 @@ create table correlatedmaptypereferencesetrefset_d(
     primary key (id, effectivetime)
 );
 -- NL-specific
-drop table if exists correlatedextendedmaptypereferencesetrefset_d;
-create table correlatedextendedmaptypereferencesetrefset_d(
+drop table if exists correlatedextendedmaptyperefset_d;
+create table correlatedextendedmaptyperefset_d(
     id varchar(36) not null,
     effectivetime date not null,
     active tinyint not null,

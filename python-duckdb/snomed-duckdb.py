@@ -126,6 +126,7 @@ def get_table_details(
     drop_suffix_from_simplerefset = (r"(Simple)(Refset)", r"\1")
     drop_suffix_from_associationreference = (r"(Association)(Reference)", r"\1")
     shorten_language_prefix = (r"(Language)", "Lang")
+    shorten_referenceset = (r"ReferenceSet", "")
     add_underscore_to_relationship_concrete_values = (
         r"(Relationship)(Concrete)(Values)",
         r"\1_\2_\3",
@@ -138,6 +139,7 @@ def get_table_details(
         drop_suffix_from_simplerefset,
         drop_suffix_from_associationreference,
         shorten_language_prefix,
+        shorten_referenceset,
         add_underscore_to_relationship_concrete_values,
         add_underscore_to_stated_relationship,
     ]
