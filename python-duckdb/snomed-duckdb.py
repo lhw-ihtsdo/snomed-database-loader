@@ -20,7 +20,6 @@ COPY_OPTIONS = "HEADER, DELIMITER '\t', DATEFORMAT '%Y%m%d', NULL '\n'"
 
 # Constants for logging messages
 DEBUG_CONNECTION_CLOSED = "Connection closed"
-DEBUG_FAILED_SQL = "SQL failed: COPY {} FROM '{}' ({})"
 DEBUG_UI_EXT_LOADED = "UI extension loaded"
 ERROR_IMPORT_FAILURE = "Failed to import '{}': {}"
 ERROR_INVALID_PACKAGE = "Invalid package directory"
@@ -56,9 +55,16 @@ parser.add_argument(
     default="",
     help="Path to DuckDB database file (omit for in-memory mode)",
 )
+parser.add_argument(
+    "--ignore-errors",
+    type=bool,
+    default=False,
+    help="Resume importing even if release files contain errors",
+)
 args = parser.parse_args()
 
 package_location = args.package
+ignore_errors = args.ignore_errors
 DB_FILE = args.db
 SQL_RESOURCES_PATH = os.path.join(
     os.path.dirname(__file__),
@@ -93,7 +99,7 @@ def get_table_details(
     language_code = r"(-[a-z-]{2,8})?"
     content_sub_type = rf"{refset_id}{summary}{rt}{language_code}"
 
-    country_namespace = r"(?:(INT|[A-Z]{2})\d{7})"
+    country_namespace = r"(INT|XX|[A-Z]{2}\d{7})"
     version_date = r"\d{8}"
     file_ext = r"txt"
 
@@ -185,6 +191,7 @@ class DuckDBClient:
             logging.debug(DEBUG_UI_EXT_LOADED)
         except Exception as e:
             logging.error(ERROR_UI_INIT_FAILED.format(e))
+            quit()
 
     def execute_sql_file(self, dirname: str, sql_filename: str) -> list[Any] | None:
         sql_filepath = os.path.join(dirname, sql_filename)
@@ -195,6 +202,7 @@ class DuckDBClient:
                 return output.fetchall()
         except Exception as e:
             logging.error(ERROR_SQL_EXEC_FAILED.format(sql_filepath, e))
+            quit()
 
     def execute_ddl(self, release_type: ReleaseType):
         ddl_filename = f"create_{release_type.value.lower()}_tables.sql"
@@ -205,6 +213,7 @@ class DuckDBClient:
             self.conn.execute(UI_START_COMMAND)
         except Exception as e:
             logging.error(ERROR_UI_START_FAILED.format(e))
+            quit()
 
     def import_text_file(
         self, table_name: str, dirname: str, rf2_filename: str
@@ -221,9 +230,8 @@ class DuckDBClient:
                     logging.error(ERROR_UNRECOGNISED_FORMAT.format(rf2_filename, e))
                 case _:
                     logging.error(ERROR_IMPORT_FAILURE.format(rf2_filename, e))
-            logging.debug(
-                DEBUG_FAILED_SQL.format(table_name, rf2_filepath, COPY_OPTIONS)
-            )
+            if not ignore_errors:
+                quit()
 
     def close(self):
         self.conn.close()
