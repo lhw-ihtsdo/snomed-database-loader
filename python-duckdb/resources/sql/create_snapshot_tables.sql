@@ -148,6 +148,19 @@ create table simplemaprefset_s(
     foreign key (refsetid) references concept_s (id),
     foreign key (referencedcomponentid) references concept_s (id)
 );
+drop table if exists queryrefset_s;
+create table queryrefset_s(
+    id varchar(36) not null primary key,
+    effectivetime date not null,
+    active tinyint not null,
+    moduleid varchar(18) not null,
+    refsetid varchar(18) not null,
+    referencedcomponentid varchar(18) not null,
+    query text not null,
+    foreign key (moduleid) references concept_s (id),
+    foreign key (refsetid) references concept_s (id),
+    foreign key (referencedcomponentid) references concept_s (id)
+);
 drop table if exists simplerefset_s;
 create table simplerefset_s(
     id varchar(36) not null primary key,

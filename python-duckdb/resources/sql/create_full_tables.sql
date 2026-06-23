@@ -120,6 +120,17 @@ create table simplemaprefset_f(
     maptarget varchar(32) not null,
     primary key (id, effectivetime)
 );
+drop table if exists queryrefset_f;
+create table queryrefset_f(
+    id varchar(36) not null,
+    effectivetime date not null,
+    active tinyint not null,
+    moduleid varchar(18) not null,
+    refsetid varchar(18) not null,
+    referencedcomponentid varchar(18) not null,
+    query text not null,
+    primary key (id, effectivetime)
+);
 drop table if exists simplerefset_f;
 create table simplerefset_f(
     id varchar(36) not null,
