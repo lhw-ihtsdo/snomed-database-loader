@@ -99,7 +99,7 @@ def get_table_details(
     language_code = r"(-[a-z-]{2,8})?"
     content_sub_type = rf"{refset_id}{summary}{rt}{language_code}"
 
-    country_namespace = r"(INT|XX|[A-Z]{2}\d{7})"
+    country_namespace = r"(INT\d{7}|INT|XX|[A-Z]{2}\d{7})"
     version_date = r"\d{8}"
     file_ext = r"txt"
 
