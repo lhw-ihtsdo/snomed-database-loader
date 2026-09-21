@@ -5,8 +5,10 @@ import re
 import sys
 import tempfile
 import zipfile
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Match, Union
+from re import Match
+from typing import Any
 
 import duckdb
 
@@ -38,6 +40,7 @@ PROMPT_CLOSE = "Press <ENTER> to close"
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
@@ -139,7 +142,7 @@ def get_table_details(
     )
     add_underscore_to_stated_relationship = (r"(Stated)(Relationship)", r"\1_\2")
 
-    regex_transformations: list[tuple[str, Union[str, Callable[[Match[str]], str]]]] = [
+    regex_transformations: list[tuple[str, str | Callable[[Match[str]], str]]] = [
         extract_content_or_summary,
         drop_suffix_from_refsetdescriptor,
         drop_suffix_from_simplerefset,
@@ -188,21 +191,21 @@ class DuckDBClient:
         try:
             self.conn.execute(UI_INSTALL_COMMAND)
             self.conn.execute(UI_LOAD_COMMAND)
-            logging.debug(DEBUG_UI_EXT_LOADED)
-        except Exception as e:
-            logging.error(ERROR_UI_INIT_FAILED.format(e))
-            quit()
+            logger.debug(DEBUG_UI_EXT_LOADED)
+        except duckdb.Error as e:
+            logger.error(ERROR_UI_INIT_FAILED.format(e))
+            sys.exit()
 
     def execute_sql_file(self, dirname: str, sql_filename: str) -> list[Any] | None:
         sql_filepath = os.path.join(dirname, sql_filename)
         try:
             with open(sql_filepath, "r") as file:
                 output = self.conn.execute(file.read())
-                logging.info(INFO_SQL_EXEC_SUCCESS.format(sql_filename))
+                logger.info(INFO_SQL_EXEC_SUCCESS.format(sql_filename))
                 return output.fetchall()
-        except Exception as e:
-            logging.error(ERROR_SQL_EXEC_FAILED.format(sql_filepath, e))
-            quit()
+        except (OSError, duckdb.Error) as e:
+            logger.error(ERROR_SQL_EXEC_FAILED.format(sql_filepath, e))
+            sys.exit()
 
     def execute_ddl(self, release_type: ReleaseType):
         ddl_filename = f"create_{release_type.value.lower()}_tables.sql"
@@ -211,9 +214,9 @@ class DuckDBClient:
     def start_ui(self):
         try:
             self.conn.execute(UI_START_COMMAND)
-        except Exception as e:
-            logging.error(ERROR_UI_START_FAILED.format(e))
-            quit()
+        except duckdb.Error as e:
+            logger.error(ERROR_UI_START_FAILED.format(e))
+            sys.exit()
 
     def import_text_file(
         self, table_name: str, dirname: str, rf2_filename: str
@@ -223,19 +226,19 @@ class DuckDBClient:
             self.conn.execute(
                 f"COPY {table_name} FROM '{rf2_filepath}' ({COPY_OPTIONS});"
             )
-            logging.info(INFO_IMPORT_SUCCESS.format(rf2_filename))
-        except Exception as e:
+            logger.info(INFO_IMPORT_SUCCESS.format(rf2_filename))
+        except duckdb.Error as e:
             match type(e):
                 case duckdb.CatalogException:
-                    logging.error(ERROR_UNRECOGNISED_FORMAT.format(rf2_filename, e))
+                    logger.error(ERROR_UNRECOGNISED_FORMAT.format(rf2_filename, e))
                 case _:
-                    logging.error(ERROR_IMPORT_FAILURE.format(rf2_filename, e))
+                    logger.error(ERROR_IMPORT_FAILURE.format(rf2_filename, e))
             if not ignore_errors:
-                quit()
+                sys.exit()
 
     def close(self):
         self.conn.close()
-        logging.debug(DEBUG_CONNECTION_CLOSED)
+        logger.debug(DEBUG_CONNECTION_CLOSED)
 
 
 def validate_targetcomponentid(client: DuckDBClient, release_type: ReleaseType) -> None:
@@ -244,26 +247,27 @@ def validate_targetcomponentid(client: DuckDBClient, release_type: ReleaseType) 
     result = client.execute_sql_file(SQL_RESOURCES_PATH, sql_filename)
 
     if result and len(result):
-        logging.error(
+        logger.error(
             f"Found {len(result)} invalid targetComponentIds in the Association Refset {release_type} file"
         )
-        quit()
+        if not ignore_errors:
+            sys.exit()
 
 
 if __name__ == "__main__":
     try:
         validate_package_path(package_location)
     except ValueError as e:
-        logging.error(e)
+        logger.error(e)
         parser.print_help(sys.stderr)
-        quit()
+        sys.exit()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         if package_location.endswith(".zip"):
             if not os.path.isfile(package_location):
-                logging.error(ERROR_ZIP_NOT_FOUND)
-                quit()
-            logging.info(INFO_EXTRACTING_PACKAGE.format(package_location))
+                logger.error(ERROR_ZIP_NOT_FOUND)
+                sys.exit()
+            logger.info(INFO_EXTRACTING_PACKAGE.format(package_location))
             with zipfile.ZipFile(package_location, "r") as zip_ref:
                 zip_ref.extractall(temp_dir)
             package_location = os.path.join(temp_dir, os.listdir(temp_dir)[0])
@@ -274,7 +278,7 @@ if __name__ == "__main__":
             for release_type in [ReleaseType.FULL, ReleaseType.SNAPSHOT]:
                 table_details = get_table_details(package_location, release_type)
                 if not table_details:
-                    logging.warning(WARNING_NO_MATCHING_FILES.format(release_type.name))
+                    logger.warning(WARNING_NO_MATCHING_FILES.format(release_type.name))
                 else:
                     duckdb_client.execute_ddl(release_type)
                     for table_name, dirname, filename in table_details:
@@ -284,7 +288,7 @@ if __name__ == "__main__":
 
             if file_imported:
                 duckdb_client.start_ui()
-                logging.info(INFO_UI_RUNNING.format(UI_PORT))
+                logger.info(INFO_UI_RUNNING.format(UI_PORT))
                 input(PROMPT_CLOSE)
         finally:
             duckdb_client.close()
